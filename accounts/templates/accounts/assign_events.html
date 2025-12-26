@@ -1,0 +1,17 @@
+<form method="post">
+  {% csrf_token %}
+
+  {% for event in events %}
+    <label>
+      <input
+        type="checkbox"
+        name="events"
+        value="{{ event.id }}"
+        {% if event.id in assigned_event_ids %}checked disabled{% endif %}
+      >
+      {{ event.name }} ({{ event.get_event_type_display }})
+    </label><br>
+  {% endfor %}
+
+  <button type="submit">Add Selected Events</button>
+</form>

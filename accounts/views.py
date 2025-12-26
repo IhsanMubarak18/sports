@@ -8,7 +8,7 @@ from django.db.models import Q
 
 from .models import User, Department, UserRole
 from .forms import StudentBulkUploadForm, ManualStudentAddForm, LoginForm
-from meet.models import Event, Registration
+from meet.models import Event, EventStatus, Meet, MeetEvent, MeetStatus, Registration
 
 
 
@@ -358,11 +358,18 @@ def student_event_register(request, event_id):
 @login_required
 def faculty_coordinator_dashboard(request):
     if request.user.role != UserRole.FACULTY_COORDINATOR:
-        return HttpResponseForbidden("Not allowed")
-    
-    department = request.user.department
-    
-    return render(request, "accounts/dashboards/faculty_coordinator_dashboard.html", {'department': department})
+        return HttpResponseForbidden("Access denied")
+
+    meets = Meet.objects.filter(status=MeetStatus.ACTIVE)
+
+    return render(
+        request,
+        "accounts/dashboards/faculty_dashboard.html",
+        {
+            "meets": meets,
+        }
+    )
+
 
 
 @login_required
@@ -401,8 +408,70 @@ def student_dashboard(request):
             "available_events": available_events
         }
     )
-        
     
+
+
+@login_required
+def admin_meet_event_assign(request, meet_id):
+    meet = get_object_or_404(Meet, id=meet_id)
+
+    events = Event.objects.filter(status="ACTIVE")
+
+    if request.method == "POST":
+        selected_event_ids = request.POST.getlist("events")
+
+        for event_id in selected_event_ids:
+            MeetEvent.objects.get_or_create(
+                meet=meet,
+                event_id=event_id
+            )
+
+        return redirect("admin_meet_dashboard")
+
+    return render(request, "admin/assign_events.html", {
+        "meet": meet,
+        "events": events
+    })
+
+
+
+
+@login_required
+def faculty_assign_events_to_meet(request, meet_id):
+    if request.user.role != UserRole.FACULTY_COORDINATOR:
+        return HttpResponseForbidden("Access denied")
+
+    meet = get_object_or_404(Meet, id=meet_id, status=MeetStatus.ACTIVE)
+
+    events = Event.objects.filter(status=EventStatus.ACTIVE)
+
+    if request.method == "POST":
+        selected_event_ids = request.POST.getlist("events")
+
+        for event_id in selected_event_ids:
+            MeetEvent.objects.get_or_create(
+                meet=meet,
+                event_id=event_id
+            )
+
+        return redirect("accounts:faculty_coordinator_dashboard")
+
+    assigned_event_ids = MeetEvent.objects.filter(
+        meet=meet
+    ).values_list("event_id", flat=True)
+
+    return render(
+        request,
+        "accounts/faculty/assign_events.html",
+        {
+            "meet": meet,
+            "events": events,
+            "assigned_event_ids": assigned_event_ids,
+        }
+    )
+
+
+
 
 #-------------------------
 #   Login and Logout
@@ -418,7 +487,6 @@ def login_view(request):
         email = form.cleaned_data["email"]
         password = form.cleaned_data["password"]
 
-        # 🔐 Auto-set password ONLY for students without password
         student = User.objects.filter(
             email=email,
             role=UserRole.STUDENT
@@ -429,7 +497,6 @@ def login_view(request):
                 student.set_password(student.register_number)
                 student.save()
 
-        # 🔑 Authenticate (works for ALL roles)
         user = authenticate(request, email=email, password=password)
 
         if user and user.is_active:
@@ -444,7 +511,7 @@ def login_view(request):
             else:
                 return redirect("accounts:student_dashboard")
 
-        # ❌ Authentication failed
+        
         form.add_error(None, "Invalid email or password")
 
     return render(request, "accounts/login.html", {"form": form})
