@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Sports Meet – Home</title>
     <style>
@@ -7,6 +8,7 @@
             font-family: Arial, sans-serif;
             background: #f5f5f5;
         }
+
         .container {
             width: 600px;
             margin: 60px auto;
@@ -14,12 +16,15 @@
             padding: 30px;
             border-radius: 8px;
         }
+
         h2 {
             text-align: center;
         }
+
         .section {
             margin-top: 25px;
         }
+
         .btn {
             display: block;
             padding: 12px;
@@ -30,34 +35,35 @@
             text-decoration: none;
             border-radius: 5px;
         }
+
         .btn:hover {
             background: #0056b3;
         }
     </style>
 </head>
+
 <body>
 
-<div class="container">
-    <h2>🏆 Sports Meet Management</h2>
+    <div class="container">
+        <h2>🏆 Sports Meet Management</h2>
 
-    <div class="section">
-        <h3>👤 Student Management</h3>
-        <a class="btn" href="{% url 'accounts:student_list' %}">Student List</a>
-        <a class="btn" href="{% url 'accounts:student_bulk_upload' %}">Upload Students (CSV)</a>
-        <a class="btn" href="{% url 'accounts:student_search' %}">Search Students</a>
+        <div class="section">
+            <h3>🏠 Dashboards</h3>
+            {% if user.role == "FACULTY_COORDINATOR" %}
+            <a class="btn" href="{% url 'accounts:faculty_coordinator_dashboard' %}">Faculty Coordinator Dashboard</a>
+            {% elif user.role == "FACULTY" %}
+            <a class="btn" href="{% url 'accounts:faculty_dashboard' %}">Faculty Dashboard</a>
+            {% elif user.role == "STUDENT_COORDINATOR" %}
+            <a class="btn" href="{% url 'accounts:student_coordinator_dashboard' %}">Student Coordinator Dashboard</a>
+            {% elif user.role == "STUDENT" %}
+            <a class="btn" href="{% url 'accounts:student_dashboard' %}">Student Dashboard</a>
+            {% endif %}
+        </div>
+
+        <hr>
+        <a class="btn" href="{% url 'accounts:logout' %}" style="background: #dc3545;">Logout</a>
     </div>
-
-    <div class="section">
-        <h3>🏟️ Event Management</h3>
-        <a class="btn" href="{% url 'accounts:coordinator_events' %}">
-            Meets
-        </a>
-    </div>
-    <a class="btn" href="{% url 'accounts:event_student_report' %}">
-        📋 Event → Registered Students
-    </a>
-
-</div>
 
 </body>
+
 </html>

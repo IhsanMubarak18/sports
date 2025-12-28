@@ -1,72 +1,72 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Student Coordinator Dashboard</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f4f6f8;
-        }
-        .container {
-            width: 650px;
-            margin: 50px auto;
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-        }
-        h2 {
-            text-align: center;
-        }
-        .section {
-            margin-top: 30px;
-        }
-        .btn {
-            display: block;
-            padding: 12px;
-            margin: 10px 0;
-            text-decoration: none;
-            background: #198754;
-            color: white;
-            text-align: center;
-            border-radius: 5px;
-        }
-        .btn:hover {
-            background: #146c43;
-        }
-        .muted {
-            color: #666;
-            font-size: 14px;
-        }
-    </style>
-</head>
-<body>
+{% extends 'accounts/dashboards/base_dashboard.html' %}
 
-<div class="container">
-    <h2>🎓 Student Coordinator Dashboard</h2>
-    <p class="muted">
-        Department: <strong>{{ department.name }}</strong>
-    </p>
+{% block title %}Student Coordinator Dashboard | Sports Meet{% endblock %}
 
-    <div class="section">
-        <h3>👥 Student Management</h3>
-        <a class="btn" href="{% url 'accounts:student_list' %}">
-            View Department Students
-        </a>
-        <a class="btn" href="{% url 'accounts:student_search' %}">
-            Search Students
-        </a>
+{% block page_title %}🎓 Student Coordinator Dashboard{% endblock %}
+{% block page_subtitle %}Assist in managing students and event registrations for your department.{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item">
+    <a href="{% url 'accounts:student_list' %}" class="nav-link">
+        <span>👥 Students</span>
+    </a>
+</li>
+<li class="nav-item">
+    <a href="{% url 'accounts:coordinator_events' %}" class="nav-link">
+        <span>🏟️ Events</span>
+    </a>
+</li>
+<li class="nav-item">
+    <a href="{% url 'accounts:event_student_report' %}" class="nav-link">
+        <span>📋 Reports</span>
+    </a>
+</li>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid">
+    <!-- Student Management -->
+    <div class="glass-card">
+        <div class="card-header">
+            <h3 class="card-title">Student Management</h3>
+            <span>👥</span>
+        </div>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Department: <strong>{{ department.name }}</strong>
+        </p>
+        <a href="{% url 'accounts:student_list' %}" class="btn-action">View Department Students</a>
+        <a href="{% url 'accounts:student_search' %}" class="btn-action btn-outline">Search Students</a>
     </div>
 
-    <div class="section">
-        <h3>🏟️ Event Management</h3>
-        <a class="btn" href="{% url 'accounts:coordinator_events' %}">
-            Add Students to Events
-        </a>
-        <a class="btn" href="{% url 'accounts:event_student_report' %}">
-            View Event Registrations
-        </a>
+    <!-- Event Management -->
+    <div class="glass-card">
+        <div class="card-header">
+            <h3 class="card-title">Event Management</h3>
+            <span>🏟️</span>
+        </div>
+        <a href="{% url 'accounts:coordinator_events' %}" class="btn-action">Add Students to Events</a>
+        <a href="{% url 'accounts:event_student_report' %}" class="btn-action btn-outline">View Registrations</a>
+    </div>
+
+    <!-- Active Meets -->
+    <div class="glass-card">
+        <div class="card-header">
+            <h3 class="card-title">Active Meets</h3>
+            <span>🏆</span>
+        </div>
+        <ul class="list">
+            {% for meet in meets %}
+            <li class="list-item">
+                <div>
+                    <strong>{{ meet.name }}</strong>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary);">{{ meet.start_date }} - {{ meet.end_date
+                        }}</p>
+                </div>
+                <span class="role-badge">{{ meet.status }}</span>
+            </li>
+            {% empty %}
+            <li class="list-item">No active meets</li>
+            {% endfor %}
+        </ul>
     </div>
 </div>
-
-</body>
-</html>
+{% endblock %}

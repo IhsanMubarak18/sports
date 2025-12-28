@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import home, student_bulk_upload, student_search, student_list,add_student_to_event, register_existing_student,  add_new_student_and_register, coordinator_events, event_student_report, faculty_coordinator_dashboard, student_coordinator_dashboard, login_view, logout_view, student_dashboard, student_event_register
+from .views import home, student_bulk_upload, student_search, student_list,add_student_to_event, register_existing_student,  add_new_student_and_register, coordinator_events, event_student_report, faculty_coordinator_dashboard, student_coordinator_dashboard, login_view, logout_view, student_dashboard, student_event_register, faculty_dashboard
 
 app_name = "accounts"
 
@@ -32,9 +32,14 @@ urlpatterns += [
         name="event_student_report",
     ),
     path(
-        "faculty/dashboard/",
+        "faculty/coordinator/dashboard/",
         faculty_coordinator_dashboard,
         name="faculty_coordinator_dashboard",
+    ),
+    path(
+        "faculty/dashboard/",
+        faculty_dashboard,
+        name="faculty_dashboard",
     ),
     path(
         "student-coordinator/dashboard/",

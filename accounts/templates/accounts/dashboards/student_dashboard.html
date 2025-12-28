@@ -1,37 +1,53 @@
-<!DOCTYPE html>
-<html>
+{% extends 'accounts/dashboards/base_dashboard.html' %}
 
-<head>
-    <title>Student Dashboard</title>
-</head>
+{% block title %}Student Dashboard | Sports Meet{% endblock %}
 
-<body>
-    <h2>Welcome, {{ student.full_name }}</h2>
-    <hr>
+{% block page_title %}🏃 Student Dashboard{% endblock %}
+{% block page_subtitle %}Track your registrations and find new events to join!{% endblock %}
 
-    <h3>📌 Registered Events</h3>
-    <ul>
-        {% for reg in registrations %}
-        <li>
-            {{ reg.meet_event.event.name }} ({{ reg.meet_event.meet.name }})
-        </li>
-        {% empty %}
-        <li>No registrations yet</li>
-        {% endfor %}
-    </ul>
-    <hr>
+{% block content %}
+<div class="dashboard-grid">
+    <!-- Registered Events -->
+    <div class="glass-card">
+        <div class="card-header">
+            <h3 class="card-title">My Registered Events</h3>
+            <span>📌</span>
+        </div>
+        <ul class="list">
+            {% for reg in registrations %}
+            <li class="list-item">
+                <div>
+                    <strong>{{ reg.meet_event.event.name }}</strong>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary);">{{ reg.meet_event.meet.name }}</p>
+                </div>
+                <span class="role-badge"
+                    style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3); color: #10b981;">Active</span>
+            </li>
+            {% empty %}
+            <li class="list-item">No registrations yet</li>
+            {% endfor %}
+        </ul>
+    </div>
 
-    <h3>🆕 Available Events</h3>
-    <ul>
-        {% for me in available_events %}
-        <li>
-            {{ me.event.name }} ({{ me.meet.name }})
-            <a href="{% url 'accounts:student_event_register' me.id %}">Register</a>
-        </li>
-        {% empty %}
-        <li>No available events</li>
-        {% endfor %}
-    </ul>
-</body>
-
-</html>
+    <!-- Available Events -->
+    <div class="glass-card" style="grid-column: span 2;">
+        <div class="card-header">
+            <h3 class="card-title">🆕 Available Events</h3>
+            <span>👟</span>
+        </div>
+        <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+            {% for me in available_events %}
+            <div class="glass-card" style="padding: 1rem; background: rgba(255, 255, 255, 0.03);">
+                <h4 style="margin-bottom: 0.5rem;">{{ me.event.name }}</h4>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">Meet: {{ me.meet.name
+                    }}</p>
+                <a href="{% url 'accounts:student_event_register' me.id %}" class="btn-action">Register Now</a>
+            </div>
+            {% empty %}
+            <p style="grid-column: span 2; text-align: center; color: var(--text-secondary);">No new events available
+                for registration.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

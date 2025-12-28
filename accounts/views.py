@@ -364,16 +364,35 @@ def faculty_coordinator_dashboard(request):
     if request.user.role != UserRole.FACULTY_COORDINATOR:
         return HttpResponseForbidden("Access denied")
 
-    meets = Meet.objects.filter(status=MeetStatus.ACTIVE)
+    meets = Meet.objects.all().order_by("-id")
+    department = request.user.department
 
     return render(
         request,
         "accounts/dashboards/faculty_coordinator_dashboard.html",
         {
             "meets": meets,
+            "department": department,
         }
     )
 
+
+@login_required
+def faculty_dashboard(request):
+    if request.user.role != UserRole.FACULTY:
+        return HttpResponseForbidden("Access denied")
+
+    meets = Meet.objects.all().order_by("-id")
+    department = request.user.department
+
+    return render(
+        request,
+        "accounts/dashboards/faculty_dashboard.html",
+        {
+            "meets": meets,
+            "department": department,
+        }
+    )
 
 
 @login_required
@@ -382,8 +401,16 @@ def student_coordinator_dashboard(request):
         return HttpResponseForbidden("Not Allowed")
     
     department = request.user.department
+    meets = Meet.objects.filter(status=MeetStatus.ACTIVE).order_by("-id")
     
-    return render(request, "accounts/dashboards/student_coordinator_dashboard.html", {"department": department})
+    return render(
+        request, 
+        "accounts/dashboards/student_coordinator_dashboard.html", 
+        {
+            "department": department,
+            "meets": meets,
+        }
+    )
 
 
 
@@ -393,10 +420,12 @@ def student_dashboard(request):
     if request.user.role != UserRole.STUDENT:
         return HttpResponseForbidden("Not allowed")
     
-    #already registered events
-    registrations = Registration.objects.filter(participant=request.user).select_related("event", "event__meet")
+    # already registered events
+    registrations = Registration.objects.filter(participant=request.user).select_related(
+        "meet_event", "meet_event__event", "meet_event__meet"
+    )
     
-    registered_event_ids = registrations.values_list("event_id", flat=True)
+    registered_meet_event_ids = registrations.values_list("meet_event_id", flat=True)
     
     if request.user.gender == "MALE":
         q_gender = Q(event__gender_boys=True)
@@ -407,8 +436,7 @@ def student_dashboard(request):
         meet__status=MeetStatus.ACTIVE, 
         is_active=True,
         event__status=EventStatus.ACTIVE
-    ).filter(q_gender).exclude(id__in=registered_event_ids).select_related("meet", "event")
-    
+    ).filter(q_gender).exclude(id__in=registered_meet_event_ids).select_related("meet", "event")
     
     return render(request, "accounts/dashboards/student_dashboard.html", {
             "student": request.user,
@@ -514,6 +542,8 @@ def login_view(request):
                 return redirect("/admin/")
             elif user.role == UserRole.FACULTY_COORDINATOR:
                 return redirect("accounts:faculty_coordinator_dashboard")
+            elif user.role == UserRole.FACULTY:
+                return redirect("accounts:faculty_dashboard")
             elif user.role == UserRole.STUDENT_COORDINATOR:
                 return redirect("accounts:student_coordinator_dashboard")
             else:
