@@ -1,10 +1,12 @@
 import csv
+import io
+from fpdf import FPDF
 from django.contrib import messages
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.hashers import make_password
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, HttpResponse
 from django.db.models import Q
 
 from .models import User, Department, UserRole
@@ -21,6 +23,15 @@ def home(request):
 
 
 
+def is_admin_or_coordinator_or_faculty(user):
+    return user.role in [
+        UserRole.ADMIN,
+        UserRole.FACULTY_COORDINATOR,
+        UserRole.STUDENT_COORDINATOR,
+        UserRole.FACULTY,
+    ]
+
+
 def is_admin_or_coordinator(user):
     return user.role in [
         UserRole.ADMIN,
@@ -33,6 +44,7 @@ def get_user_department(user):
     if user.role in (
         UserRole.FACULTY_COORDINATOR,
         UserRole.STUDENT_COORDINATOR,
+        UserRole.FACULTY,
     ):
         return user.department
     return None
@@ -52,54 +64,74 @@ def student_bulk_upload(request):
             decoded = csv_file.read().decode("utf-8").splitlines()
             reader = csv.DictReader(decoded)
 
-            for row in reader:
-                department, _ = Department.objects.get_or_create(
-                    name=row["department"]
-                )
+            try:
+                for row in reader:
+                    department_name = row.get("department")
+                    if not department_name:
+                        messages.error(request, "Missing 'department' column in CSV row.")
+                        return redirect("accounts:student_bulk_upload")
 
-                # Gender
-                gender = row.get("gender", "").strip().upper()
-                if gender not in ("MALE", "FEMALE"):
-                    gender = None
+                    department, _ = Department.objects.get_or_create(
+                        name=department_name
+                    )
 
-                # Role (default STUDENT)
-                role = row.get("role", "STUDENT").strip().upper()
-                if role not in (
-                    UserRole.STUDENT,
-                    UserRole.STUDENT_COORDINATOR,
-                    UserRole.FACULTY_COORDINATOR,
-                ):
-                    role = UserRole.STUDENT
+                    # Gender
+                    gender = row.get("gender", "").strip().upper()
+                    if gender not in ("MALE", "FEMALE"):
+                        gender = None
 
-                student, created = User.objects.get_or_create(
-                    register_number=row["register_number"],
-                    defaults={
-                        "full_name": row["full_name"],
-                        "email": row["email"],
-                        "department": department,
-                        "role": role,
-                        "gender": gender,
-                    }
-                )
+                    # Role (default STUDENT)
+                    role = row.get("role", "STUDENT").strip().upper()
+                    if role not in (
+                        UserRole.STUDENT,
+                        UserRole.STUDENT_COORDINATOR,
+                        UserRole.FACULTY_COORDINATOR,
+                    ):
+                        role = UserRole.STUDENT
 
-                # Update gender if missing
-                if not created and not student.gender and gender:
-                    student.gender = gender
-                    student.save()
+                    register_number = row.get("register_number")
+                    full_name = row.get("full_name")
+                    email = row.get("email")
 
-                # Track redirect priority
-                if role == UserRole.FACULTY_COORDINATOR:
-                    redirect_role = UserRole.FACULTY_COORDINATOR
-                elif role == UserRole.STUDENT_COORDINATOR and redirect_role != UserRole.FACULTY_COORDINATOR:
-                    redirect_role = UserRole.STUDENT_COORDINATOR
+                    if not all([register_number, full_name, email]):
+                        messages.error(request, f"Missing required fields in CSV for student {register_number or 'unknown'}")
+                        continue
 
-            # 🔀 FINAL REDIRECT
-            if redirect_role == UserRole.FACULTY_COORDINATOR:
-                return redirect("accounts:faculty_dashboard")
-            elif redirect_role == UserRole.STUDENT_COORDINATOR:
-                return redirect("accounts:student_coordinator_dashboard")
+                    student, created = User.objects.get_or_create(
+                        register_number=register_number,
+                        defaults={
+                            "full_name": full_name,
+                            "email": email,
+                            "department": department,
+                            "role": role,
+                            "gender": gender,
+                        }
+                    )
 
-            return redirect("accounts:student_list")
+                    # Update gender if missing
+                    if not created and not student.gender and gender:
+                        student.gender = gender
+                        student.save()
+
+                    # Track redirect priority
+                    if role == UserRole.FACULTY_COORDINATOR:
+                        redirect_role = UserRole.FACULTY_COORDINATOR
+                    elif role == UserRole.STUDENT_COORDINATOR and redirect_role != UserRole.FACULTY_COORDINATOR:
+                        redirect_role = UserRole.STUDENT_COORDINATOR
+
+                # 🔀 FINAL REDIRECT
+                messages.success(request, "Students uploaded successfully!")
+                if redirect_role == UserRole.FACULTY_COORDINATOR:
+                    return redirect("accounts:faculty_coordinator_dashboard")
+                elif redirect_role == UserRole.STUDENT_COORDINATOR:
+                    return redirect("accounts:student_coordinator_dashboard")
+
+                return redirect("accounts:student_list")
+            except Exception as e:
+                import traceback
+                print(traceback.format_exc())
+                messages.error(request, f"Error processing CSV: {str(e)}")
+                return redirect("accounts:student_bulk_upload")
 
     else:
         form = StudentBulkUploadForm()
@@ -117,13 +149,15 @@ def student_bulk_upload(request):
 
 @login_required
 def student_search(request):
-    if not is_admin_or_coordinator(request.user):
+    if not is_admin_or_coordinator_or_faculty(request.user):
         return HttpResponseForbidden("Not allowed")
 
     query = request.GET.get("q", "")
     
     dept = get_user_department(request.user)
-    students = User.objects.filter(role=UserRole.STUDENT)
+    students = User.objects.filter(
+        role__in=[UserRole.STUDENT, UserRole.STUDENT_COORDINATOR]
+    )
     
     if dept:
         students = students.filter(department=dept)
@@ -148,11 +182,13 @@ def student_search(request):
     
 @login_required
 def student_list(request):
-    if not is_admin_or_coordinator(request.user):
+    if not is_admin_or_coordinator_or_faculty(request.user):
         return HttpResponseForbidden("Not allowed")
     
     dept = get_user_department(request.user)
-    students = User.objects.filter(role=UserRole.STUDENT)
+    students = User.objects.filter(
+        role__in=[UserRole.STUDENT, UserRole.STUDENT_COORDINATOR]
+    )
     
     if dept:
         students = students.filter(department=dept)
@@ -285,7 +321,7 @@ def coordinator_events(request):
 
 @login_required
 def event_student_report(request):
-    if not is_admin_or_coordinator(request.user):
+    if not is_admin_or_coordinator_or_faculty(request.user):
         return HttpResponseForbidden("Not allowed")
 
     query = request.GET.get("q", "").lower()
@@ -310,10 +346,14 @@ def event_student_report(request):
 
 
         if regs:
+            boys = [r for r in regs if r.participant.gender == "MALE"]
+            girls = [r for r in regs if r.participant.gender == "FEMALE"]
             result.append({
                 "meet_event": me,
                 "event": me.event,
                 "registrations": regs,
+                "boys": boys,
+                "girls": girls,
             })
 
     return render(
@@ -324,6 +364,90 @@ def event_student_report(request):
             "query": query,
         }
     )
+
+
+@login_required
+def download_event_report_pdf(request, meet_event_id, gender=None):
+    if not is_admin_or_coordinator_or_faculty(request.user):
+        return HttpResponseForbidden("Not allowed")
+
+    meet_event = get_object_or_404(MeetEvent, id=meet_event_id)
+    registrations = Registration.objects.filter(meet_event=meet_event).select_related('participant', 'participant__department')
+
+    # Filter by gender if specified
+    if gender == 'boys':
+        data = [r for r in registrations if r.participant.gender == "MALE"]
+        title_suffix = "Boys"
+    elif gender == 'girls':
+        data = [r for r in registrations if r.participant.gender == "FEMALE"]
+        title_suffix = "Girls"
+    else:
+        # Combined report
+        boys = [r for r in registrations if r.participant.gender == "MALE"]
+        girls = [r for r in registrations if r.participant.gender == "FEMALE"]
+        data = None
+        title_suffix = "All"
+
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Title
+    pdf.set_font("helvetica", "B", 16)
+    pdf.cell(0, 10, f"Event Report: {meet_event.event.name}", ln=True, align='C')
+    pdf.set_font("helvetica", "", 12)
+    pdf.cell(0, 10, f"Meet: {meet_event.meet.name}", ln=True, align='C')
+    if gender:
+        pdf.cell(0, 10, f"Category: {title_suffix}", ln=True, align='C')
+    pdf.ln(10)
+
+    def add_table(title, table_data):
+        pdf.set_font("helvetica", "B", 14)
+        pdf.cell(0, 10, title, ln=True)
+        pdf.ln(2)
+        
+        # Header
+        pdf.set_font("helvetica", "B", 10)
+        pdf.set_fill_color(200, 200, 200)
+        pdf.cell(50, 8, "Name", 1, 0, 'C', True)
+        pdf.cell(30, 8, "Register No", 1, 0, 'C', True)
+        pdf.cell(60, 8, "Department", 1, 0, 'C', True)
+        pdf.cell(45, 8, "Email", 1, 1, 'C', True)
+        
+        # Data
+        pdf.set_font("helvetica", "", 10)
+        for r in table_data:
+            pdf.cell(50, 8, str(r.participant.full_name)[:25], 1)
+            pdf.cell(30, 8, str(r.participant.register_number), 1)
+            pdf.cell(60, 8, str(r.participant.department.name if r.participant.department else "")[:30], 1)
+            pdf.cell(45, 8, str(r.participant.email)[:25], 1)
+            pdf.ln()
+        pdf.ln(10)
+
+    if data is not None:
+        # Gender-specific report
+        if data:
+            add_table(title_suffix, data)
+        else:
+            pdf.set_font("helvetica", "I", 12)
+            pdf.cell(0, 10, f"No {title_suffix.lower()} registered for this event.", ln=True)
+    else:
+        # Combined report
+        if boys:
+            add_table("Boys", boys)
+        if girls:
+            add_table("Girls", girls)
+        if not boys and not girls:
+            pdf.set_font("helvetica", "I", 12)
+            pdf.cell(0, 10, "No students registered for this event.", ln=True)
+
+    output = io.BytesIO()
+    pdf.output(output)
+    output.seek(0)
+
+    filename = f"report_{meet_event.event.name}_{title_suffix}.pdf"
+    response = HttpResponse(output.read(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 
 
@@ -821,7 +945,6 @@ def login_view(request):
             else:
                 return redirect("accounts:student_dashboard")
 
-        
         form.add_error(None, "Invalid email or password")
 
     return render(request, "accounts/login.html", {"form": form})

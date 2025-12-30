@@ -201,7 +201,7 @@
             <div class="logo">SPORTS MEET</div>
             <p class="subtitle">Management System</p>
 
-            <form method="post">
+            <form method="post" id="loginForm">
                 {% csrf_token %}
 
                 {% if form.non_field_errors %}
@@ -213,7 +213,9 @@
                 {% for field in form %}
                 <div class="form-group">
                     <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    {{ field }}
+                    <input type="{{ field.field.widget.input_type }}" name="{{ field.name }}"
+                        id="{{ field.id_for_label }}" value="" autocomplete="off" class="form-control"
+                        placeholder="Enter {{ field.label }}" {% if field.field.required %}required{% endif %}>
                     {% if field.errors %}
                     <div style="color: #ef4444; font-size: 0.8rem; margin-top: 0.3rem;">
                         {{ field.errors.0 }}
@@ -222,8 +224,18 @@
                 </div>
                 {% endfor %}
 
-                <button type="submit" class="btn-login">Authorize</button>
+                <button type="submit" class="btn-login">Authorize Now</button>
             </form>
+
+            <script>
+                // Suppression of browser password manager
+                document.addEventListener('DOMContentLoaded', function () {
+                    const passField = document.querySelector('input[type="password"]');
+                    if (passField) {
+                        passField.setAttribute('autocomplete', 'new-password');
+                    }
+                });
+            </script>
         </div>
     </div>
 </body>

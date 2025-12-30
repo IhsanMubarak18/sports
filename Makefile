@@ -1,4 +1,4 @@
-.PHONY: help env build up down restart logs ps migrate makemigrations superuser shell django-check
+.PHONY: help env build up down restart logs ps migrate makemigrations superuser shell django-check local-setup local-migrate local-superuser local-run
 
 help:
 	@echo "Targets:"
@@ -14,6 +14,10 @@ help:
 	@echo "  make superuser      Create Django superuser"
 	@echo "  make shell          Django shell"
 	@echo "  make django-check   Django system check"
+	@echo "  make local-setup    Setup local environment (install deps, migrate, superuser)"
+	@echo "  make local-migrate  Run local Django migrations"
+	@echo "  make local-superuser Create local Django superuser"
+	@echo "  make local-run      Run local Django development server"
 
 env:
 	@test -f .env || cp .env.example .env
@@ -21,8 +25,7 @@ env:
 build:
 	docker compose build
 
-up:
-	docker compose up -d
+up: local-run
 
 down:
 	docker compose down
@@ -49,3 +52,19 @@ shell:
 
 django-check:
 	docker compose exec web python manage.py check
+
+local-setup: env
+	pip install -r requirements.txt
+	python3 manage.py migrate
+	@echo "Creating superuser (admin/admin)..."
+	@DJANGO_SUPERUSER_PASSWORD=admin DJANGO_SUPERUSER_USERNAME=admin DJANGO_SUPERUSER_EMAIL=admin@example.com python3 manage.py createsuperuser --noinput
+
+local-migrate:
+	python3 manage.py migrate
+
+local-superuser:
+	python3 manage.py createsuperuser
+
+local-run:
+	-@fuser -k 8000/tcp 2>/dev/null || true
+	python3 manage.py runserver 0.0.0.0:8000

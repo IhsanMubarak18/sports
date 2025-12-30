@@ -64,6 +64,12 @@ class Department(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def student_count(self):
+        return self.users.filter(
+            role__in=[UserRole.STUDENT, UserRole.STUDENT_COORDINATOR]
+        ).count()
     
     
 

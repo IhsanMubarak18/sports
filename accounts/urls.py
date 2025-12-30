@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import home, student_bulk_upload, student_search, student_list,add_student_to_event, register_existing_student,  add_new_student_and_register, coordinator_events, event_student_report, faculty_coordinator_dashboard, student_coordinator_dashboard, login_view, logout_view, student_dashboard, student_event_register, faculty_dashboard, admin_meet_event_assign, faculty_assign_events_to_meet, admin_dashboard, admin_create_meet, admin_create_event, create_team, manage_team_members, set_team_captain
+from .views import home, student_bulk_upload, student_search, student_list,add_student_to_event, register_existing_student,  add_new_student_and_register, coordinator_events, event_student_report, download_event_report_pdf, faculty_coordinator_dashboard, student_coordinator_dashboard, login_view, logout_view, student_dashboard, student_event_register, faculty_dashboard, admin_meet_event_assign, faculty_assign_events_to_meet, admin_dashboard, admin_create_meet, admin_create_event, create_team, manage_team_members, set_team_captain
 
 app_name = "accounts"
 
@@ -30,6 +30,18 @@ urlpatterns += [
         "reports/event-students/",
         event_student_report,
         name="event_student_report",
+    ),
+    path(
+        "reports/event-students/<int:meet_event_id>/pdf/boys/",
+        download_event_report_pdf,
+        {'gender': 'boys'},
+        name="download_boys_report_pdf",
+    ),
+    path(
+        "reports/event-students/<int:meet_event_id>/pdf/girls/",
+        download_event_report_pdf,
+        {'gender': 'girls'},
+        name="download_girls_report_pdf",
     ),
     path(
         "faculty/coordinator/dashboard/",
