@@ -1,0 +1,27 @@
+{% extends 'accounts/dashboards/base_dashboard.html' %}
+
+{% block title %}Reports{% endblock %}
+{% block page_title %}📊 Reports{% endblock %}
+{% block page_subtitle %}Individual & Team Event Registrations{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid">
+
+    <div class="glass-card">
+        <h3>👤 Individual Events</h3>
+        <p>View & download individual event registrations</p>
+        <a href="{% url 'accounts:event_student_report' %}" class="btn-action">
+            View Individual Reports
+        </a>
+    </div>
+
+    <div class="glass-card">
+        <h3>👥 Team Events</h3>
+        <p>View & download team registrations</p>
+        <a href="{% url 'accounts:team_registration_report' %}" class="btn-action">
+            View Team Reports
+        </a>
+    </div>
+
+</div>
+{% endblock %}

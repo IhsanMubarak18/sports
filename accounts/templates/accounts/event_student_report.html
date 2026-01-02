@@ -1,10 +1,9 @@
 {% extends 'accounts/dashboards/base_dashboard.html' %}
 
-{% block title %}Event Registrations | Sports Meet{% endblock %}
-
-{% block page_title %}📋 Event → Registered Students{% endblock %}
+{% block title %}Event Registrations{% endblock %}
+{% block page_title %}📋 Event Registration Reports{% endblock %}
 {% block page_subtitle %}
-View students registered for each event
+Individual & Team Event Registrations
 {% endblock %}
 
 {% block content %}
@@ -13,71 +12,107 @@ View students registered for each event
     <!-- Search -->
     <div class="glass-card" style="grid-column: span 2;">
         <form method="get">
-            <div style="display:flex; gap:10px; max-width:500px;">
+            <div style="display:flex; gap:10px; max-width:600px;">
                 <input type="text"
                        name="q"
                        value="{{ query }}"
                        placeholder="Search by name or register number"
                        style="flex:1;">
-                <button type="submit" class="btn-action">
-                    🔍 Search
-                </button>
-                <!-- Back button -->
+                <button type="submit" class="btn-action">🔍 Search</button>
                 <a href="{% url 'accounts:faculty_coordinator_dashboard' %}"
                    class="btn-action btn-outline">
-                    ⬅ Back to Dashboard
+                    ⬅ Back
                 </a>
             </div>
         </form>
     </div>
 
-    <!-- Event-wise Registrations -->
-    {% for item in events %}
-    <div class="glass-card" style="grid-column: span 2; margin-bottom:20px;">
+    <!-- ================= INDIVIDUAL EVENTS ================= -->
+    <div class="glass-card" style="grid-column: span 2;">
+        <h3>👤 Individual Events</h3>
+    </div>
+
+    {% for item in individual_events %}
+    <div class="glass-card" style="grid-column: span 2;">
         <div class="card-header">
             <h3 class="card-title">
-                🏟️ {{ item.event.name }}
+                {{ item.event.name }} ({{ item.meet_event.meet.name }})
             </h3>
-            <span style="font-size:0.85rem; color:var(--text-secondary);">
-                Meet: {{ item.meet_event.meet.name }}
-            </span>
+            <a href="{% url 'accounts:download_individual_event_pdf' item.meet_event.id %}"
+               class="btn-action btn-outline">
+                ⬇ PDF
+            </a>
         </div>
 
-        {% if item.registrations %}
-        <div style="overflow-x:auto;">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Register No</th>
-                        <th>Department</th>
-                        <th>Email</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for reg in item.registrations %}
-                    <tr>
-                        <td>{{ reg.participant.full_name }}</td>
-                        <td>{{ reg.participant.register_number }}</td>
-                        <td>{{ reg.participant.department.name }}</td>
-                        <td>{{ reg.participant.email }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <p style="color:var(--text-secondary); padding:10px;">
-            No students registered for this event
-        </p>
-        {% endif %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Register No</th>
+                    <th>Department</th>
+                    <th>Gender</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for reg in item.registrations %}
+                <tr>
+                    <td>{{ reg.participant.full_name }}</td>
+                    <td>{{ reg.participant.register_number }}</td>
+                    <td>{{ reg.participant.department.name }}</td>
+                    <td>{{ reg.participant.gender }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
     {% empty %}
-    <div class="glass-card" style="grid-column: span 2;">
-        <p style="color:var(--text-secondary); text-align:center;">
-            No matching registrations found
-        </p>
+    <p style="grid-column: span 2; color:var(--text-secondary);">
+        No individual registrations
+    </p>
+    {% endfor %}
+
+    <!-- ================= TEAM EVENTS ================= -->
+    <div class="glass-card" style="grid-column: span 2; margin-top:20px;">
+        <h3>👥 Team Events</h3>
     </div>
+
+    {% for item in team_events %}
+    <div class="glass-card" style="grid-column: span 2;">
+        <h3>
+            {{ item.event.name }} ({{ item.meet_event.meet.name }})
+        </h3>
+
+        {% for team in item.teams %}
+        <div style="margin-top:15px;">
+            <strong>Team: {{ team.name }}</strong>
+
+            <a href="{% url 'accounts:download_team_pdf' team.id %}"
+               class="btn-action btn-outline"
+               style="margin-top:5px;">
+                ⬇ Team PDF
+            </a>
+
+            <table class="table" style="margin-top:10px;">
+                <tr>
+                    <th>Name</th>
+                    <th>Register No</th>
+                    <th>Role</th>
+                </tr>
+                {% for m in team.teammember_set.all %}
+                <tr>
+                    <td>{{ m.student.full_name }}</td>
+                    <td>{{ m.student.register_number }}</td>
+                    <td>{% if m.is_captain %}Captain ⭐{% else %}Member{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+    {% empty %}
+    <p style="grid-column: span 2; color:var(--text-secondary);">
+        No team registrations
+    </p>
     {% endfor %}
 
 </div>

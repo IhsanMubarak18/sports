@@ -1,0 +1,37 @@
+{% extends 'accounts/dashboards/base_dashboard.html' %}
+
+{% block title %}Individual Event Report{% endblock %}
+{% block page_title %}Individual Event Registrations{% endblock %}
+
+{% block content %}
+{% for item in events %}
+<div class="glass-card" style="margin-bottom:20px;">
+    <h3>{{ item.event.name }} ({{ item.meet.name }})</h3>
+
+    <a href="{% url 'accounts:download_individual_event_pdf' item.meet_event.id %}"
+       class="btn-action btn-outline">
+        ⬇ Download PDF
+    </a>
+
+    <table class="table" style="margin-top:10px;">
+        <tr>
+            <th>Name</th>
+            <th>Register No</th>
+            <th>Gender</th>
+            <th>Department</th>
+        </tr>
+
+        {% for reg in item.registrations %}
+        <tr>
+            <td>{{ reg.participant.full_name }}</td>
+            <td>{{ reg.participant.register_number }}</td>
+            <td>{{ reg.participant.gender }}</td>
+            <td>{{ reg.participant.department.name }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4">No registrations</td></tr>
+        {% endfor %}
+    </table>
+</div>
+{% endfor %}
+{% endblock %}

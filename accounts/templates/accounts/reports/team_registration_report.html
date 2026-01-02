@@ -1,0 +1,36 @@
+{% extends 'accounts/dashboards/base_dashboard.html' %}
+
+{% block title %}Team Registration Report{% endblock %}
+{% block page_title %}Team Registrations{% endblock %}
+
+{% block content %}
+{% for team in teams %}
+<div class="glass-card" style="margin-bottom:20px;">
+    <h3>
+        {{ team.name }} – {{ team.meet_event.event.name }}
+        ({{ team.meet_event.meet.name }})
+    </h3>
+
+    <a href="{% url 'accounts:download_team_pdf' team.id %}"
+       class="btn-action btn-outline">
+        ⬇ Download PDF
+    </a>
+
+    <table class="table" style="margin-top:10px;">
+        <tr>
+            <th>Name</th>
+            <th>Register No</th>
+            <th>Captain</th>
+        </tr>
+
+        {% for m in team.teammember_set.all %}
+        <tr>
+            <td>{{ m.student.full_name }}</td>
+            <td>{{ m.student.register_number }}</td>
+            <td>{% if m.is_captain %}⭐{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endfor %}
+{% endblock %}

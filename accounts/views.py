@@ -4,12 +4,15 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.hashers import make_password
-from django.http import HttpResponseForbidden
+from django.http import HttpResponse, HttpResponseForbidden
 from django.db.models import Q
 
 from .models import User, Department, UserRole
 from .forms import StudentBulkUploadForm, ManualStudentAddForm, LoginForm
 from meet.models import Event, EventStatus, EventType, Meet, MeetEvent, MeetStatus, Registration, Team, TeamMember
+
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 
 
@@ -291,39 +294,72 @@ def event_student_report(request):
     query = request.GET.get("q", "").lower()
 
     meet_events = MeetEvent.objects.filter(
-        meet__status=MeetStatus.ACTIVE
-    ).select_related('event', 'meet').prefetch_related(
-        "registrations__participant"
+        meet__status=MeetStatus.ACTIVE,
+        is_active=True
+    ).select_related(
+        "event", "meet"
+    ).prefetch_related(
+        "registrations__participant",
+        "teams__teammember_set__student"
     )
 
-    result = []
+    individual_results = []
+    team_results = []
 
     for me in meet_events:
-        regs = me.registrations.all()
+        # -------------------------
+        # INDIVIDUAL EVENTS
+        # -------------------------
+        if me.event.event_type == EventType.INDIVIDUAL:
+            regs = me.registrations.all()
 
-        if query:
-            regs = [
-                r for r in regs
-                if query in (r.participant.full_name or "").lower()
-                or query in (r.participant.register_number or "").lower()
-            ]
+            if query:
+                regs = [
+                    r for r in regs
+                    if query in (r.participant.full_name or "").lower()
+                    or query in (r.participant.register_number or "").lower()
+                ]
 
+            if regs:
+                individual_results.append({
+                    "meet_event": me,
+                    "event": me.event,
+                    "registrations": regs,
+                })
 
-        if regs:
-            result.append({
-                "meet_event": me,
-                "event": me.event,
-                "registrations": regs,
-            })
+        # -------------------------
+        # TEAM EVENTS
+        # -------------------------
+        else:
+            teams = me.teams.all()
+
+            if query:
+                teams = [
+                    t for t in teams
+                    if any(
+                        query in (m.student.full_name or "").lower()
+                        or query in (m.student.register_number or "").lower()
+                        for m in t.teammember_set.all()
+                    )
+                ]
+
+            if teams:
+                team_results.append({
+                    "meet_event": me,
+                    "event": me.event,
+                    "teams": teams,
+                })
 
     return render(
         request,
         "accounts/event_student_report.html",
         {
-            "events": result,
+            "individual_events": individual_results,
+            "team_events": team_results,
             "query": query,
         }
     )
+
 
 
 
@@ -352,6 +388,41 @@ def student_event_register(request, meet_event_id):
     )
 
     return redirect("accounts:student_dashboard")
+
+
+
+
+@login_required
+def student_manage(request):
+    if request.user.role != UserRole.FACULTY_COORDINATOR:
+        return HttpResponseForbidden()
+
+    students = User.objects.filter(role=UserRole.STUDENT)
+
+    q = request.GET.get("q")
+    if q:
+        students = students.filter(
+            Q(full_name__icontains=q) |
+            Q(register_number__icontains=q)
+        )
+
+    return render(
+        request,
+        "accounts/student_manage.html",
+        {
+            "students": students
+        }
+    )
+
+
+
+@login_required
+def student_event_unregister(request, student_id):
+    if request.user.role != UserRole.FACULTY_COORDINATOR:
+        return HttpResponseForbidden()
+
+    Registration.objects.filter(participant_id=student_id).delete()
+    return redirect("accounts:student_manage")
 
 
 
@@ -718,21 +789,68 @@ def manage_team_members(request, team_id):
             "FEMALE" if meet_event.gender_girls else "",
         ]
     )
+    
+    if request.user.role == UserRole.FACULTY_COORDINATOR:
+        students = students.filter(department=request.user.department)
+
 
     members = TeamMember.objects.filter(team=team)
+    
+    if request.method == "POST" and "update_team_strength" in request.POST:
+        min_size = request.POST.get("min_team_size")
+        max_size = request.POST.get("max_team_size")
+
+        if not min_size or not max_size:
+            messages.error(request, "Both team size fields are required")
+            return redirect(request.path)
+
+        min_size = int(min_size)
+        max_size = int(max_size)
+
+        if min_size > max_size:
+            messages.error(request, "Minimum cannot exceed maximum")
+            return redirect(request.path)
+
+        meet_event.min_team_size = min_size
+        meet_event.max_team_size = max_size
+        meet_event.save()
+
+        messages.success(request, "Team strength updated successfully")
+        return redirect(request.path)
+
 
     if request.method == "POST":
         student_id = request.POST.get("student")
 
         student = get_object_or_404(User, id=student_id)
+        
+        current_count = TeamMember.objects.filter(team=team).count()
 
-        TeamMember.objects.get_or_create(
+        if current_count >= meet_event.max_team_size:
+            messages.error(request, "Team is already full")
+            return redirect(request.path)
+
+
+        obj, created = TeamMember.objects.get_or_create(
             team=team,
             student=student
         )
+        if not created:
+            messages.warning(request, "Student already in team")
+
+
+        # TeamMember.objects.get_or_create(
+        #     team=team,
+        #     student=student
+        # )
 
         messages.success(request, "Student added")
         return redirect(request.path)
+    
+    current_count = members.count()
+    max_size = meet_event.max_team_size
+    is_full = current_count >= max_size
+
 
     return render(
         request,
@@ -741,8 +859,79 @@ def manage_team_members(request, team_id):
             "team": team,
             "students": students,
             "members": members,
+            "meet_event": meet_event,
+            "current_count": current_count,
+            "max_size": max_size,
+            "is_full": is_full,
         }
     )
+
+
+
+
+
+
+@login_required
+def edit_team(request, team_id):
+    team = get_object_or_404(Team, id=team_id)
+
+    if request.user.role not in (
+        UserRole.ADMIN,
+        UserRole.FACULTY_COORDINATOR,
+    ):
+        return HttpResponseForbidden("Not allowed")
+
+    if request.method == "POST":
+        name = request.POST.get("name")
+
+        if not name:
+            messages.error(request, "Team name required")
+            return redirect(request.path)
+
+        team.name = name
+        team.save()
+        messages.success(request, "Team name updated")
+
+        return redirect(
+            "accounts:manage_team_members",
+            team_id=team.id
+        )
+
+    return render(
+        request,
+        "accounts/team/edit_team.html",
+        {"team": team}
+    )
+
+
+
+
+
+
+@login_required
+def remove_team_member(request, team_id, member_id):
+    team = get_object_or_404(Team, id=team_id)
+
+    if request.user.role not in (
+        UserRole.ADMIN,
+        UserRole.FACULTY_COORDINATOR,
+    ):
+        return HttpResponseForbidden("Not allowed")
+
+    member = get_object_or_404(
+        TeamMember,
+        id=member_id,
+        team=team
+    )
+
+    if member.is_captain:
+        messages.error(request, "Remove captain role first")
+        return redirect("accounts:manage_team_members", team_id=team.id)
+
+    member.delete()
+    messages.success(request, "Member removed")
+
+    return redirect("accounts:manage_team_members", team_id=team.id)
 
 
 
@@ -776,6 +965,128 @@ def set_team_captain(request, team_id, member_id):
         "accounts:manage_team_members",
         team_id=team.id
     )
+
+
+
+
+
+
+@login_required
+def team_registration_report(request):
+    if request.user.role not in (
+        UserRole.ADMIN,
+        UserRole.FACULTY_COORDINATOR,
+    ):
+        return HttpResponseForbidden("Not allowed")
+
+    teams = Team.objects.select_related(
+        "meet_event",
+        "meet_event__event",
+        "meet_event__meet"
+    ).prefetch_related("teammember_set__student")
+
+    return render(
+        request,
+        "accounts/reports/team_registration_report.html",
+        {"teams": teams}
+    )
+
+
+
+
+@login_required
+def team_events_manage(request):
+    if request.user.role != UserRole.FACULTY_COORDINATOR:
+        return HttpResponseForbidden("Access denied")
+
+    meet_events = MeetEvent.objects.filter(
+        event__event_type=EventType.TEAM,
+        meet__status=MeetStatus.ACTIVE,
+        is_active=True
+    ).select_related("event", "meet").prefetch_related("teams")
+
+    return render(
+        request,
+        "accounts/team_events_manage.html",
+        {
+            "meet_events": meet_events
+        }
+    )
+
+
+
+
+
+
+@login_required
+def download_individual_event_pdf(request, meet_event_id):
+    meet_event = get_object_or_404(MeetEvent, id=meet_event_id)
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f'attachment; filename="{meet_event.event.name}_individual.pdf"'
+    )
+
+    p = canvas.Canvas(response, pagesize=A4)
+    y = 800
+
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(50, y, f"{meet_event.event.name} – Individual Registration")
+    y -= 30
+
+    p.setFont("Helvetica", 10)
+    for reg in meet_event.registrations.all():
+        line = (
+            f"{reg.participant.full_name} | "
+            f"{reg.participant.register_number} | "
+            f"{reg.participant.gender} | "
+            f"{reg.participant.department.name}"
+        )
+        p.drawString(50, y, line)
+        y -= 18
+        if y < 50:
+            p.showPage()
+            y = 800
+
+    p.save()
+    return response
+
+
+
+
+
+
+@login_required
+def download_team_pdf(request, team_id):
+    team = get_object_or_404(Team, id=team_id)
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f'attachment; filename="{team.name}_team.pdf"'
+    )
+
+    p = canvas.Canvas(response, pagesize=A4)
+    y = 800
+
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(50, y, f"Team: {team.name}")
+    y -= 25
+
+    p.setFont("Helvetica", 11)
+    for m in team.teammember_set.all():
+        role = "Captain" if m.is_captain else "Member"
+        p.drawString(
+            50,
+            y,
+            f"{m.student.full_name} | {m.student.register_number} | {role}"
+        )
+        y -= 18
+        if y < 50:
+            p.showPage()
+            y = 800
+
+    p.save()
+    return response
 
 
 

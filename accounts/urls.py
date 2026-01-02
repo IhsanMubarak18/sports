@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import home, student_bulk_upload, student_search, student_list,add_student_to_event, register_existing_student,  add_new_student_and_register, coordinator_events, event_student_report, faculty_coordinator_dashboard, student_coordinator_dashboard, login_view, logout_view, student_dashboard, student_event_register, faculty_dashboard, admin_meet_event_assign, faculty_assign_events_to_meet, admin_dashboard, admin_create_meet, admin_create_event, create_team, manage_team_members, set_team_captain
+from .views import home, student_bulk_upload, student_search, student_list,add_student_to_event, register_existing_student,  add_new_student_and_register, coordinator_events, event_student_report, faculty_coordinator_dashboard, student_coordinator_dashboard, login_view, logout_view, student_dashboard, student_event_register, faculty_dashboard, admin_meet_event_assign, faculty_assign_events_to_meet, admin_dashboard, admin_create_meet, admin_create_event, create_team, manage_team_members, set_team_captain, team_registration_report, download_individual_event_pdf, download_team_pdf, edit_team, remove_team_member, team_events_manage, student_manage
 
 app_name = "accounts"
 
@@ -88,5 +88,37 @@ urlpatterns += [
         set_team_captain,
         name="set_team_captain"
     ),
+    path("reports/teams/", team_registration_report, name="team_registration_report"),
 
+    path(
+        "reports/individual/<int:meet_event_id>/pdf/",
+        download_individual_event_pdf,
+        name="download_individual_event_pdf"
+    ),
+
+    path(
+        "reports/team/<int:team_id>/pdf/",
+        download_team_pdf,
+        name="download_team_pdf"
+    ),
+    path(
+        "team/<int:team_id>/edit/",
+        edit_team,
+        name="edit_team"
+    ),
+    path(
+        "team/<int:team_id>/remove-member/<int:member_id>/",
+        remove_team_member,
+        name="remove_team_member"
+    ),
+    path(
+        "team-events/",
+        team_events_manage,
+        name="team_events_manage"
+    ),
+    path(
+        "students/manage/",
+        student_manage,
+        name="student_manage"
+    ),
 ]
