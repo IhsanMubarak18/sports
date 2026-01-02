@@ -175,23 +175,44 @@ def add_student_to_event(request, meet_event_id):
 
     meet_event = get_object_or_404(MeetEvent, id=meet_event_id)
     event = meet_event.event
-    query = request.GET.get("q", "")
-    students = []
-    
-    dept = get_user_department(request.user)
 
+    query = request.GET.get("q", "")
+    students = User.objects.filter(role=UserRole.STUDENT)
+
+    # department restriction for coordinators
+    if request.user.role in (
+        UserRole.FACULTY_COORDINATOR,
+        UserRole.STUDENT_COORDINATOR,
+    ):
+        students = students.filter(department=request.user.department)
+
+    # search
     if query:
-        students = User.objects.filter(role=UserRole.STUDENT)
-        
-        if dept:
-            students = students.filter(department=dept)
-            
         students = students.filter(
             Q(full_name__icontains=query) |
             Q(register_number__icontains=query)
         )
 
-    manual_form = ManualStudentAddForm()
+    # 🔥 BULK REGISTER
+    if request.method == "POST":
+        student_ids = request.POST.getlist("students")
+
+        for sid in student_ids:
+            student = get_object_or_404(User, id=sid)
+
+            # skip if gender not allowed
+            if student.gender == "MALE" and not meet_event.gender_boys:
+                continue
+            if student.gender == "FEMALE" and not meet_event.gender_girls:
+                continue
+
+            Registration.objects.get_or_create(
+                meet_event=meet_event,
+                participant=student
+            )
+
+        messages.success(request, "Selected students added successfully")
+        return redirect(request.path)
 
     return render(
         request,
@@ -201,9 +222,12 @@ def add_student_to_event(request, meet_event_id):
             "event": event,
             "students": students,
             "query": query,
-            "manual_form": manual_form,
         }
     )
+
+
+
+
 
 @login_required
 def register_existing_student(request, meet_event_id, student_id):
@@ -276,13 +300,25 @@ def add_new_student_and_register(request, meet_event_id):
 
 @login_required
 def coordinator_events(request):
-    if not is_admin_or_coordinator(request.user):
-        return HttpResponseForbidden("Not Allowed")
-    
-    # Show active meet events
-    meet_events = MeetEvent.objects.filter(meet__status=MeetStatus.ACTIVE, is_active=True).select_related('event', 'meet')
-    
-    return render(request, "accounts/coordinator_events.html", {"meet_events": meet_events})
+    if request.user.role not in (
+        UserRole.ADMIN,
+        UserRole.FACULTY_COORDINATOR,
+    ):
+        return HttpResponseForbidden("Not allowed")
+
+    meet_events = MeetEvent.objects.filter(
+        is_active=True,
+        meet__status=MeetStatus.ACTIVE
+    ).select_related("event", "meet")
+
+    return render(
+        request,
+        "accounts/coordinator_events.html",
+        {
+            "meet_events": meet_events
+        }
+    )
+
 
 
 
@@ -392,12 +428,17 @@ def student_event_register(request, meet_event_id):
 
 
 
+
 @login_required
 def student_manage(request):
     if request.user.role != UserRole.FACULTY_COORDINATOR:
         return HttpResponseForbidden()
 
-    students = User.objects.filter(role=UserRole.STUDENT)
+    
+    students = User.objects.filter(
+        role=UserRole.STUDENT,
+        registration__meet_event__event__event_type=EventType.INDIVIDUAL
+    ).distinct()
 
     q = request.GET.get("q")
     if q:
@@ -416,12 +457,22 @@ def student_manage(request):
 
 
 
+
 @login_required
 def student_event_unregister(request, student_id):
     if request.user.role != UserRole.FACULTY_COORDINATOR:
         return HttpResponseForbidden()
 
-    Registration.objects.filter(participant_id=student_id).delete()
+    Registration.objects.filter(
+        participant_id=student_id,
+        meet_event__event__event_type=EventType.INDIVIDUAL
+    ).delete()
+
+    messages.success(
+        request,
+        "Student unregistered from individual events"
+    )
+
     return redirect("accounts:student_manage")
 
 

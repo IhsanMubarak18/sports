@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import home, student_bulk_upload, student_search, student_list,add_student_to_event, register_existing_student,  add_new_student_and_register, coordinator_events, event_student_report, faculty_coordinator_dashboard, student_coordinator_dashboard, login_view, logout_view, student_dashboard, student_event_register, faculty_dashboard, admin_meet_event_assign, faculty_assign_events_to_meet, admin_dashboard, admin_create_meet, admin_create_event, create_team, manage_team_members, set_team_captain, team_registration_report, download_individual_event_pdf, download_team_pdf, edit_team, remove_team_member, team_events_manage, student_manage
+from .views import home, student_bulk_upload, student_search, student_list,add_student_to_event, register_existing_student,  add_new_student_and_register, coordinator_events, event_student_report, faculty_coordinator_dashboard, student_coordinator_dashboard, login_view, logout_view, student_dashboard, student_event_register, faculty_dashboard, admin_meet_event_assign, faculty_assign_events_to_meet, admin_dashboard, admin_create_meet, admin_create_event, create_team, manage_team_members, set_team_captain, team_registration_report, download_individual_event_pdf, download_team_pdf, edit_team, remove_team_member, team_events_manage, student_manage, student_event_unregister
 
 app_name = "accounts"
 
@@ -121,4 +121,9 @@ urlpatterns += [
         student_manage,
         name="student_manage"
     ),
+    path(
+        "student-event-edit/<int:student_id>/",
+        student_event_unregister,
+        name="student_event_unregister"
+    )
 ]

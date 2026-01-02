@@ -1,58 +1,65 @@
 {% extends 'accounts/dashboards/base_dashboard.html' %}
 
 {% block title %}Add Students | {{ event.name }}{% endblock %}
-
 {% block page_title %}➕ Add Students to Event{% endblock %}
 {% block page_subtitle %}
 Event: {{ event.name }}
 {% endblock %}
 
 {% block content %}
-<div class="dashboard-grid">
+<div class="glass-card" style="grid-column: span 2;">
 
-    <!-- Search Existing Student -->
-    <div class="glass-card" style="grid-column: span 2;">
-        <div class="card-header">
-            <h3 class="card-title">🔍 Search Existing Student</h3>
+    <!-- Search -->
+    <form method="get" style="margin-bottom:1rem;">
+        <div style="display:flex; gap:10px; max-width:500px;">
+            <input type="text"
+                   name="q"
+                   value="{{ query }}"
+                   placeholder="Name or Register Number"
+                   style="flex:1;">
+            <button type="submit" class="btn-action">
+                🔍 Search
+            </button>
         </div>
+    </form>
 
-        <form method="get" style="margin-bottom:1rem;">
-            <div style="display:flex; gap:10px; max-width:500px;">
-                <input type="text"
-                       name="q"
-                       value="{{ query }}"
-                       placeholder="Name or Register Number"
-                       style="flex:1;">
-                <button type="submit" class="btn-action">
-                    Search
-                </button>
-            </div>
-        </form>
+    <!-- 🔥 BULK ADD FORM -->
+    <form method="post">
+        {% csrf_token %}
 
         <div style="overflow-x:auto;">
             <table class="table">
                 <thead>
                     <tr>
+                        <th>
+                            <input type="checkbox" onclick="toggleAll(this)">
+                        </th>
                         <th>Name</th>
                         <th>Register No</th>
-                        <th>Action</th>
+                        <th>Gender</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for s in students %}
                     <tr>
+                        <td>
+                            <input type="checkbox"
+                                   name="students"
+                                   value="{{ s.id }}">
+                        </td>
                         <td>{{ s.full_name }}</td>
                         <td>{{ s.register_number }}</td>
                         <td>
-                            <a href="{% url 'accounts:register_existing_student' meet_event.id s.id %}"
-                               class="btn-action btn-outline">
-                                ➕ Add to Event
-                            </a>
+                            {% if s.gender == "MALE" %}
+                                🔵 Boys
+                            {% else %}
+                                🌸 Girls
+                            {% endif %}
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="3" style="text-align:center; color:var(--text-secondary);">
+                        <td colspan="4" style="text-align:center; color:var(--text-secondary);">
                             No students found
                         </td>
                     </tr>
@@ -60,33 +67,22 @@ Event: {{ event.name }}
                 </tbody>
             </table>
         </div>
-    </div>
 
-    <!-- Add New Student -->
-    <div class="glass-card" style="grid-column: span 2;">
-        <div class="card-header">
-            <h3 class="card-title">🆕 Add New Student & Register</h3>
-        </div>
-
-        <form method="post" action="{% url 'accounts:add_new_student_and_register' meet_event.id %}">
-            {% csrf_token %}
-
-            <div class="form-grid">
-                {{ manual_form.as_p }}
-            </div>
-
-            <div style="margin-top:1rem;">
-                <button type="submit" class="btn-action">
-                    ✅ Add & Register
-                </button>
-
-                <a href="{% url 'accounts:coordinator_events' %}"
-                   class="btn-action btn-outline">
-                    ⬅ Back
-                </a>
-            </div>
-        </form>
-    </div>
-
+        <button type="submit"
+                class="btn-action"
+                style="margin-top:15px;">
+            ➕ Add Selected Students
+        </button>
+    </form>
 </div>
+
+<script>
+function toggleAll(source) {
+    const checkboxes = document.querySelectorAll('input[name="students"]');
+    for (const cb of checkboxes) {
+        cb.checked = source.checked;
+    }
+}
+</script>
+
 {% endblock %}
