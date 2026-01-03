@@ -6,10 +6,10 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.hashers import make_password
-from django.http import HttpResponseForbidden, HttpResponse
+from django.http import HttpResponseForbidden, HttpResponse, FileResponse
 from django.db.models import Q
 
-from .models import User, Department, UserRole
+from .models import User, Department, UserRole, Gender
 from .forms import StudentBulkUploadForm, ManualStudentAddForm, LoginForm
 from meet.models import Event, EventStatus, EventType, Meet, MeetEvent, MeetStatus, Registration, Team, TeamMember
 
@@ -208,21 +208,95 @@ def add_student_to_event(request, meet_event_id):
 
     meet_event = get_object_or_404(MeetEvent, id=meet_event_id)
     event = meet_event.event
-    query = request.GET.get("q", "")
-    students = []
+
+    # --- HANDLE BULK ADD (POST) ---
+    if request.method == "POST":
+        student_ids = request.POST.getlist("student_ids")
+        if student_ids:
+            students_to_add = User.objects.filter(id__in=student_ids, role=UserRole.STUDENT)
+            
+            # optional: verify department access
+            if request.user.role in (UserRole.FACULTY_COORDINATOR, UserRole.STUDENT_COORDINATOR):
+                students_to_add = students_to_add.filter(department=request.user.department)
+
+            added_count = 0
+            newly_added_ids = []
+            for student in students_to_add:
+                try:
+                    _, created = Registration.objects.get_or_create(meet_event=meet_event, participant=student)
+                    if created:
+                        added_count += 1
+                        newly_added_ids.append(student.id)
+                except ValidationError as e:
+                    messages.error(request, f"Error adding {student.full_name}: {e.message_dict.get('__all__', [str(e)])[0]}")
+            
+            if added_count > 0:
+                messages.success(request, f"Added {added_count} students to {event.name}")
+                # Store in session for "Recently Added" section
+                request.session[f'recently_added_{meet_event.id}'] = newly_added_ids
+        
+        return redirect("accounts:add_student_to_event", meet_event_id=meet_event.id)
+
+    # --- HANDLE FILTERS (GET) ---
+    query = request.GET.get("q", "").strip()
+    dept_id = request.GET.get("department")
+    semester = request.GET.get("semester")
+
+    students = User.objects.filter(role=UserRole.STUDENT).select_related('department')
+
+    # Role-based restriction: Default to user's department but allow choosing others
+    user_dept = get_user_department(request.user)
     
-    dept = get_user_department(request.user)
+    # Filter Logic
+    if dept_id and dept_id.isdigit():
+        current_dept_id = int(dept_id)
+        students = students.filter(department_id=current_dept_id)
+    elif user_dept:
+        # Default to user's department if no filter selected
+        current_dept_id = user_dept.id
+        students = students.filter(department=user_dept)
+    else:
+        current_dept_id = None
+    
+    if semester:
+        students = students.filter(semester=semester)
 
     if query:
-        students = User.objects.filter(role=UserRole.STUDENT)
-        
-        if dept:
-            students = students.filter(department=dept)
-            
         students = students.filter(
             Q(full_name__icontains=query) |
             Q(register_number__icontains=query)
         )
+    
+    # Exclude already registered
+    registered_ids = Registration.objects.filter(meet_event=meet_event).values_list("participant_id", flat=True)
+    students = students.exclude(id__in=registered_ids).order_by('full_name')
+    
+    # Registered Students Filters
+    reg_dept = request.GET.get('reg_dept')
+    reg_gender = request.GET.get('reg_gender')
+    reg_q = request.GET.get('reg_q', '')
+
+    registered_registrations = Registration.objects.filter(meet_event=meet_event).select_related('participant', 'participant__department')
+
+    if reg_dept and reg_dept.isdigit():
+        registered_registrations = registered_registrations.filter(participant__department_id=int(reg_dept))
+    
+    if reg_gender:
+        registered_registrations = registered_registrations.filter(participant__gender=reg_gender)
+    
+    if reg_q:
+        registered_registrations = registered_registrations.filter(
+            Q(participant__full_name__icontains=reg_q) |
+            Q(participant__register_number__icontains=reg_q)
+        )
+
+    registered_registrations = registered_registrations.order_by('participant__full_name')
+    
+    # Recently Registered IDs (from session) for highlighting
+    recently_added_ids = request.session.get(f'recently_added_{meet_event.id}', [])
+
+    departments = Department.objects.all()
+    semesters = ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8"] 
 
     manual_form = ManualStudentAddForm()
 
@@ -233,10 +307,80 @@ def add_student_to_event(request, meet_event_id):
             "meet_event": meet_event,
             "event": event,
             "students": students,
+            "registered_registrations": registered_registrations,
+            "recently_added_ids": recently_added_ids,
             "query": query,
+            "selected_dept": current_dept_id,
+            "selected_sem": semester,
+            "departments": departments,
+            "semesters": semesters,
+            "genders": Gender.choices,
             "manual_form": manual_form,
-        }
+            "reg_dept": int(reg_dept) if (reg_dept and reg_dept.isdigit()) else None,
+            "reg_gender": reg_gender,
+            "reg_q": reg_q,
+        },
     )
+
+@login_required
+def export_registered_students_pdf(request, meet_event_id):
+    meet_event = get_object_or_404(MeetEvent, id=meet_event_id)
+    
+    reg_dept = request.GET.get('reg_dept')
+    reg_gender = request.GET.get('reg_gender')
+    reg_q = request.GET.get('reg_q', '')
+
+    registrations = Registration.objects.filter(meet_event=meet_event).select_related('participant', 'participant__department')
+
+    if reg_dept and reg_dept.isdigit():
+        registrations = registrations.filter(participant__department_id=int(reg_dept))
+    if reg_gender:
+        registrations = registrations.filter(participant__gender=reg_gender)
+    if reg_q:
+        registrations = registrations.filter(
+            Q(participant__full_name__icontains=reg_q) |
+            Q(participant__register_number__icontains=reg_q)
+        )
+    
+    registrations = registrations.order_by('participant__full_name')
+
+    import io
+    from fpdf import FPDF
+    from django.http import FileResponse
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    
+    pdf.set_font('helvetica', 'B', 15)
+    pdf.cell(0, 10, f'Registered Students - {meet_event.event.name}', 0, 1, 'C')
+    pdf.ln(5)
+
+    # Table Header
+    pdf.set_fill_color(200, 200, 200)
+    pdf.set_font('helvetica', 'B', 10)
+    pdf.cell(60, 10, 'Name', 1, 0, 'C', 1)
+    pdf.cell(40, 10, 'Register No', 1, 0, 'C', 1)
+    pdf.cell(35, 10, 'Dept', 1, 0, 'C', 1)
+    pdf.cell(25, 10, 'Gender', 1, 0, 'C', 1)
+    pdf.cell(25, 10, 'Sem', 1, 0, 'C', 1)
+    pdf.ln()
+
+    pdf.set_font('helvetica', '', 10)
+    for reg in registrations:
+        pdf.cell(60, 10, str(reg.participant.full_name)[:30], 1)
+        pdf.cell(40, 10, str(reg.participant.register_number), 1)
+        pdf.cell(35, 10, str(reg.participant.department.name if reg.participant.department else "-")[:18], 1)
+        pdf.cell(25, 10, str(reg.participant.get_gender_display() if reg.participant.gender else "-"), 1)
+        pdf.cell(25, 10, str(reg.participant.semester if reg.participant.semester else "-"), 1)
+        pdf.ln()
+
+    buf = io.BytesIO()
+    pdf.output(buf)
+    buf.seek(0)
+
+    filename = f"registrations_{meet_event.event.name.replace(' ', '_')}.pdf"
+    return FileResponse(buf, as_attachment=True, filename=filename)
 
 @login_required
 def register_existing_student(request, meet_event_id, student_id):
@@ -440,16 +584,12 @@ def download_event_report_pdf(request, meet_event_id, gender=None):
             pdf.set_font("helvetica", "I", 12)
             pdf.cell(0, 10, "No students registered for this event.", ln=True)
 
-    output = io.BytesIO()
-    pdf.output(output)
-    output.seek(0)
+    buf = io.BytesIO()
+    pdf.output(buf)
+    buf.seek(0)
 
     filename = f"report_{meet_event.event.name}_{title_suffix}.pdf"
-    response = HttpResponse(output.read(), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return response
-
-
+    return FileResponse(buf, as_attachment=True, filename=filename)
 
 
 @login_required
@@ -491,13 +631,26 @@ def faculty_coordinator_dashboard(request):
         return HttpResponseForbidden("Access denied")
 
     meets = Meet.objects.filter(status=MeetStatus.ACTIVE).order_by("-id")
+    
+    meets_data = []
+    for meet in meets:
+        assigned_events = MeetEvent.objects.filter(
+            meet=meet,
+            is_active=True
+        ).select_related('event')
+        
+        meets_data.append({
+            "meet": meet,
+            "assigned_events": assigned_events
+        })
+
     department = request.user.department
 
     return render(
         request,
         "accounts/dashboards/faculty_coordinator_dashboard.html",
         {
-            "meets": meets,
+            "meets_data": meets_data,
             "department": department,
         }
     )
@@ -953,3 +1106,118 @@ def login_view(request):
 def logout_view(request):
     logout(request)
     return redirect('accounts:login')
+
+@login_required
+def results_dashboard(request):
+    if not is_admin_or_coordinator(request.user):
+        return HttpResponseForbidden("Not allowed")
+    
+    active_meets = Meet.objects.filter(status=MeetStatus.ACTIVE).prefetch_related('meetevent_set__event')
+    return render(request, "accounts/results_dashboard.html", {"active_meets": active_meets})
+
+@login_required
+def manage_event_results(request, meet_event_id):
+    if not is_admin_or_coordinator(request.user):
+        return HttpResponseForbidden("Not allowed")
+    
+    meet_event = get_object_or_404(MeetEvent, id=meet_event_id)
+    query = request.GET.get("q", "").strip()
+    
+    # Fetch all students instead of only registered ones
+    students = User.objects.filter(role=UserRole.STUDENT).select_related('department')
+    
+    if query:
+        students = students.filter(
+            Q(full_name__icontains=query) |
+            Q(register_number__icontains=query)
+        )
+    
+    # Get registrations for this meet event to show positions
+    regs = Registration.objects.filter(meet_event=meet_event)
+    reg_map = {r.participant_id: r for r in regs}
+    
+    # Attach registration to student objects for template access
+    for s in students:
+        s.reg = reg_map.get(s.id)
+    
+    # Sort students: those with positions first, then alphabetically
+    # In Python since we have the map now
+    students = sorted(students, key=lambda x: (x.reg.position if x.reg and x.reg.position is not None else 999, x.full_name))
+    
+    return render(request, "accounts/manage_results.html", {
+        "meet_event": meet_event,
+        "students": students, # Changed from registrations to students
+        "query": query
+    })
+
+@login_required
+def set_registration_position(request, meet_event_id, student_id):
+    if not is_admin_or_coordinator(request.user):
+        return HttpResponseForbidden("Not allowed")
+    
+    meet_event = get_object_or_404(MeetEvent, id=meet_event_id)
+    student = get_object_or_404(User, id=student_id, role=UserRole.STUDENT)
+    
+    # Get or create registration on the fly
+    registration, created = Registration.objects.get_or_create(
+        meet_event=meet_event,
+        participant=student
+    )
+    
+    position = request.POST.get("position")
+    
+    if position:
+        try:
+            pos_val = int(position)
+            if pos_val < 0:
+                registration.position = None
+            else:
+                registration.position = pos_val
+            registration.save()
+            messages.success(request, f"Updated position for {student.full_name}")
+        except ValueError:
+            messages.error(request, "Invalid position value")
+            
+    return redirect("accounts:manage_event_results", meet_event_id=meet_event.id)
+
+@login_required
+def export_results_pdf(request, meet_event_id):
+    if not is_admin_or_coordinator(request.user):
+        return HttpResponseForbidden("Not allowed")
+    
+    meet_event = get_object_or_404(MeetEvent, id=meet_event_id)
+    winners = Registration.objects.filter(meet_event=meet_event, position__isnull=False).order_by('position')
+    
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Title
+    pdf.set_font('helvetica', 'B', 16)
+    pdf.cell(0, 10, f'Event Results: {meet_event.event.name}', 0, 1, 'C')
+    pdf.set_font('helvetica', '', 12)
+    pdf.cell(0, 10, f'Meet: {meet_event.meet.name}', 0, 1, 'C')
+    pdf.ln(10)
+    
+    # Table Header
+    pdf.set_font('helvetica', 'B', 12)
+    pdf.cell(30, 10, 'Position', 1)
+    pdf.cell(70, 10, 'Name', 1)
+    pdf.cell(45, 10, 'Reg No', 1)
+    pdf.cell(45, 10, 'Department', 1)
+    pdf.ln()
+    
+    # Table Content
+    pdf.set_font('helvetica', '', 11)
+    for reg in winners:
+        pdf.cell(30, 10, f"{reg.position}", 1)
+        pdf.cell(70, 10, str(reg.participant.full_name)[:30], 1)
+        pdf.cell(45, 10, str(reg.participant.register_number), 1)
+        dept_name = reg.participant.department.name if reg.participant.department else "-"
+        pdf.cell(45, 10, str(dept_name)[:20], 1)
+        pdf.ln()
+    
+    buf = io.BytesIO()
+    pdf.output(buf)
+    buf.seek(0)
+    
+    return FileResponse(buf, as_attachment=True, filename=f"results_{meet_event.event.name.replace(' ', '_')}.pdf")

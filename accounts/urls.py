@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import home, student_bulk_upload, student_search, student_list,add_student_to_event, register_existing_student,  add_new_student_and_register, coordinator_events, event_student_report, download_event_report_pdf, faculty_coordinator_dashboard, student_coordinator_dashboard, login_view, logout_view, student_dashboard, student_event_register, faculty_dashboard, admin_meet_event_assign, faculty_assign_events_to_meet, admin_dashboard, admin_create_meet, admin_create_event, create_team, manage_team_members, set_team_captain
+from .views import home, student_bulk_upload, student_search, student_list,add_student_to_event, register_existing_student,  add_new_student_and_register, coordinator_events, event_student_report, download_event_report_pdf, faculty_coordinator_dashboard, student_coordinator_dashboard, login_view, logout_view, student_dashboard, student_event_register, faculty_dashboard, admin_meet_event_assign, faculty_assign_events_to_meet, admin_dashboard, admin_create_meet, admin_create_event, create_team, manage_team_members, set_team_captain, export_registered_students_pdf, results_dashboard, manage_event_results, set_registration_position, export_results_pdf
 
 app_name = "accounts"
 
@@ -100,5 +100,13 @@ urlpatterns += [
         set_team_captain,
         name="set_team_captain"
     ),
-
+    path(
+        "events/<int:meet_event_id>/export-pdf-registrations/",
+        export_registered_students_pdf,
+        name="export_registered_students_pdf"
+    ),
+    path("results/", results_dashboard, name="results_dashboard"),
+    path("results/event/<int:meet_event_id>/", manage_event_results, name="manage_event_results"),
+    path("results/set-position/<int:meet_event_id>/<int:student_id>/", set_registration_position, name="set_registration_position"),
+    path("results/export-pdf/<int:meet_event_id>/", export_results_pdf, name="export_results_pdf"),
 ]
